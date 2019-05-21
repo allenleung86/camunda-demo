@@ -1,5 +1,8 @@
 package org.camunda.bpm.getstarted.loanapproval.camunda.process.constant;
 
+/**
+ * 项目流程常量类
+ */
 public class ProjectProcessConstant {
 
     /**

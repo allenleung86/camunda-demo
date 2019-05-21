@@ -9,11 +9,8 @@ import org.camunda.bpm.engine.task.Task;
 import org.camunda.bpm.getstarted.loanapproval.camunda.process.constant.ProjectProcessConstant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import javax.ws.rs.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -89,40 +86,50 @@ public class ProjectController {
 
     @ApiOperation(value = "项目报名")
     @PostMapping(value = "/{projectId}/users{userId}")
-    public boolean ParticipatingProject(@PathVariable Long projectId, @PathVariable Long userId) {
+    public boolean participatingProject(@PathVariable Long projectId, @PathVariable Long userId) {
         //ignore argument verify
 
         //save the record to db
 
+        // projectId 12347
+
         Long savedRecordId = 3L;
         //start a new instance of the process
         Map<String, Object> variables = new HashMap<String, Object>();
-        variables.put(ProjectProcessConstant.VAR_NAME_SCHOOL, "上海交通大学");
-        variables.put(ProjectProcessConstant.VAR_NAME_STUDENT, String.valueOf(userId));
-        variables.put(ProjectProcessConstant.FORM_RECORD_ID, savedRecordId);
+        variables.put(ProjectProcessConstant.VAR_NAME_SCHOOL, "上海交通大学"); // school 上海交通大学
+        variables.put(ProjectProcessConstant.VAR_NAME_STUDENT, String.valueOf(userId)); // student 2383
+        variables.put(ProjectProcessConstant.FORM_RECORD_ID, savedRecordId); // recordId 项目审批记录id 3L
 
-        ProcessInstance instance = runtimeService.
-                startProcessInstanceByKey(ProjectProcessConstant.PROCESS_ID, variables);
+        // 通过key开启流程实例
+        ProcessInstance instance = runtimeService.startProcessInstanceByKey(ProjectProcessConstant.PROCESS_ID, variables);
         if (instance == null) {
             return false;
-        }else {
+        } else {
             return true;
         }
     }
 
+    /**
+     * @param schoolName  学校中文名称
+     * @param reviewLevel 审核级别
+     * @return
+     */
     @ApiOperation(value = "获取需要审批的项目申请列表")
     @GetMapping(value = "/project/approve/list")
-    public @ResponseBody List<ProjectParticipateRequestRecord> getAllProjectParticipateRequest(String schoolName, Integer reviewLevel) {
+    public @ResponseBody
+    List<ProjectParticipateRequestRecord> getAllProjectParticipateRequest(String schoolName, Integer reviewLevel) {
 
         LOGGER.info("The school name is {}", schoolName);
         //get the taskList
         List<Task> tasks;
+
+        // 如果是一级审核,则通过指定任务名称taskName和任务参与组taskCandidateGroup获取task列表
         if (reviewLevel.equals(1)) {
-             tasks = taskService.createTaskQuery().
-                taskName(ProjectProcessConstant.TASK_NAME_FIRST_LEVEL_REVIEW).
-                            taskCandidateGroup(schoolName).
-                            list();
-        }else {
+            tasks = taskService.createTaskQuery().
+                    taskName(ProjectProcessConstant.TASK_NAME_FIRST_LEVEL_REVIEW).
+                    taskCandidateGroup(schoolName).
+                    list();
+        } else { // 二级审核,则通过指定任务名称taskName和任务参与组taskCandidateGroup获取task列表
             tasks = taskService.createTaskQuery().
                     taskName(ProjectProcessConstant.TASK_NAME_SECOND_LEVEL_REVIEW).
                     taskCandidateGroup(schoolName).
@@ -130,13 +137,15 @@ public class ProjectController {
         }
 
         List<ProjectParticipateRequestRecord> records = new ArrayList<ProjectParticipateRequestRecord>(tasks.size());
-        tasks.forEach( task -> {
+        tasks.forEach(task -> {
             ProjectParticipateRequestRecord record = new ProjectParticipateRequestRecord();
             String taskId = task.getId();
+
+            // 通过taskId获取
             Map<String, Object> variables = taskService.getVariables(taskId);
 
-            Long studentId = Long.valueOf ( (String)variables.get(ProjectProcessConstant.VAR_NAME_STUDENT) );
-            Long recordId = (Long) variables.get(ProjectProcessConstant.FORM_RECORD_ID);
+            Long studentId = Long.valueOf((String) variables.get(ProjectProcessConstant.VAR_NAME_STUDENT)); // student 上海交通大学
+            Long recordId = (Long) variables.get(ProjectProcessConstant.FORM_RECORD_ID); // recordId 3L
             record.setStudentId(studentId);
             record.setProjectParticipateId(recordId);
             record.setTaskId(taskId);
@@ -155,15 +164,22 @@ public class ProjectController {
         if (task == null) {
             LOGGER.error("The task not found, task id is {}", taskId);
             return false;
-        }else {
+        } else {
             //business logic here
 
             //Into next step
             LOGGER.info("The taskId is {}", taskId);
             Map<String, Object> variables = new HashMap<>();
-            variables.put(ProjectProcessConstant.FORM_EXTRA_INFO_1,  needExtraInfo);
+
+            // extra_info_1 是否需要额外材料
+            variables.put(ProjectProcessConstant.FORM_EXTRA_INFO_1, needExtraInfo);
+
+            // approved_1 是否已通过审批
             variables.put(ProjectProcessConstant.FORM_APPROVED_1, passed);
+
+            // 标记任务完成和让流程继续执行
             taskService.complete(task.getId(), variables);
+
             return true;
         }
     }
@@ -178,7 +194,7 @@ public class ProjectController {
                         list();
 
         List<UploadExtraInfoRecord> records = new ArrayList<>(uploadExtraInfoTask.size());
-        uploadExtraInfoTask.forEach( task -> {
+        uploadExtraInfoTask.forEach(task -> {
             UploadExtraInfoRecord record = new UploadExtraInfoRecord();
             record.setTaskId(task.getId());
 
@@ -193,7 +209,7 @@ public class ProjectController {
 
     @ApiOperation(value = "上传指定项目所需的额外资料")
     @PostMapping(value = "/{projectId}/users/{userId}/extraInfo")
-    public boolean  uploadExtraInfo(@PathVariable Long projectId, @PathVariable Long userId,  String extraInfo, String taskId) {
+    public boolean uploadExtraInfo(@PathVariable Long projectId, @PathVariable Long userId, String extraInfo, String taskId) {
         //must verify the task of the taskId pointing is belong the current user.
         Task task = taskService.createTaskQuery().
                 taskAssignee(String.valueOf(userId)).
@@ -204,7 +220,7 @@ public class ProjectController {
             LOGGER.error("The task not found.");
             LOGGER.error("the assignee is {}, taskName is {}, taskId is {}.", userId, ProjectProcessConstant.TASK_NAME_UPLOAD_EXTRA_INFO, taskId);
             return false;
-        }else {
+        } else {
             //upload extra info to db.
 
             //business logic here
